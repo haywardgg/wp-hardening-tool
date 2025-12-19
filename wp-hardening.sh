@@ -124,7 +124,7 @@ discover_sites() {
     sites[$i]="$(dirname "${sites[$i]}")"
   done
 
-  echo "${sites[@]}"
+  printf "%s\n" "${sites[@]}"
 }
 
 # -------------------------
