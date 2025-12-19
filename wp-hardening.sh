@@ -173,7 +173,7 @@ for WP_ROOT in "${TARGETS[@]}"; do
 
   (
     run "rm -f \"$WP_ROOT/wp-config-sample.php\" \"$WP_ROOT/config-example.php\""
-  ) & spinner "🗑 Removing example config files"
+  ) & spinner "🗑️ Removing example config files"
 
   (
     run "find \"$WP_ROOT\" -exec chown \"$WP_OWNER:$WP_GROUP\" {} \\;"
