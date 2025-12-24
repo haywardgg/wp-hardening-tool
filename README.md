@@ -17,8 +17,20 @@ Designed for sysadmins, developers, and VPS users who want a **repeatable, audit
 - 🌍 Accepts **full path OR domain name**
 - 🔍 Auto-discovers WordPress installs
 - 🏢 `--all-sites` mode
+- 🗂️ Automatic permission backups (with optional restore)
 - 🧠 Multisite detection (informational only)
 - 🛑 Strong safety checks to prevent destructive usage
+- 📜 Detailed logging to `/var/log/wordpress-permissions.log`
+
+## ✨ New in Version 2.0
+
+- ✅ Backup & Restore - Automatic permission backups before changes
+- ✅ Enhanced Security - Additional hardening steps (wp-includes, debug.log, directory listings)
+- ✅ Better Error Handling - Commands fail safely with proper feedback
+- ✅ Detailed Logging - Timestamped logs with error levels
+- ✅ Validation - Pre-flight checks and post-change verification
+- ✅ Restore Feature - Rollback changes if something goes wrong
+- ✅ Configurable Permissions - Adjust for your specific needs
 
 ---
 
@@ -70,6 +82,48 @@ sudo ./wp-hardening.sh --base-path=/srv/www example.com
 
 Multiple `--base-path` flags may be supplied.
 
+### Skip backups
+```bash
+sudo ./wp-hardening.sh --no-backup example.com
+```
+
+### Restore permissions from the latest backup
+```bash
+sudo ./wp-hardening.sh --restore=/tmp/wp-perms-backup/example-latest
+```
+
+### Increase verbosity (disables spinner)
+```bash
+sudo ./wp-hardening.sh --verbose example.com
+```
+
+### Advanced examples
+
+#### Custom base path for site discovery
+```bash
+sudo ./wp-hardening.sh --base-path=/srv/www example.com
+```
+
+#### Custom ownership (for non-www-data setups)
+```bash
+sudo ./wp-hardening.sh --owner=webadmin --group=webgroup example.com
+```
+
+#### Skip backup (not recommended for production)
+```bash
+sudo ./wp-hardening.sh --no-backup example.com
+```
+
+#### Restore from previous backup
+```bash
+sudo ./wp-hardening.sh --restore=/tmp/wp-perms-backup/example-latest
+```
+
+#### Dry run with custom web server group
+```bash
+sudo ./wp-hardening.sh --dry-run --ws-group=nginx example.com
+```
+
 ---
 
 ## 🔍 How Target Resolution Works
@@ -86,18 +140,37 @@ When a **full path** is supplied, it is used directly after validation.
 
 ## 🔒 What This Script Does
 
-- Sets safe file permissions:
-  - Directories: `755`
-  - Files: `644`
-- Secures `wp-config.php`:
-  - Group: webserver group
-  - Permissions: `600`
-- Allows WordPress to write to `wp-content`
-- Removes:
-  - `wp-config-sample.php`
-  - `config-example.php`
-- Disables `xmlrpc.php` by setting permissions to `000`
-- Secures `.htaccess` (if present)
+### Core Security Hardening
+
+- Sets safe file permissions (directories `755`, files `644`)
+- Secures `wp-config.php` (permissions `600`, webserver group)
+- Allows WordPress to write to `wp-content` (directories `775`, files `664`)
+- Sets setgid on `wp-content` directories for proper group inheritance
+
+### Additional Hardening
+
+- Disables `xmlrpc.php` (sets `000` permissions)
+- Secures `wp-includes` directory (sets `750` permissions)
+- Protects `wp-content/debug.log` (sets `000` permissions when present)
+- Disables directory listing in `wp-content/uploads` via `.htaccess`
+- Removes example files: `wp-config-sample.php`, `readme.html`, `license.txt`
+- Secures `.htaccess` (sets `644` permissions, webserver group)
+
+### Safety Features
+
+- Creates permission backups before changes
+- Validates WordPress structure before proceeding
+- Prevents execution on system directories
+- Post-change verification
+- Detailed logging to `/var/log/wordpress-permissions.log`
+
+---
+
+## 🗂️ Backups & Logging
+
+- Permission backups are created by default in `/tmp/wp-perms-backup` (disable with `--no-backup`).
+- Restore the most recent backup for a site via `--restore=/tmp/wp-perms-backup/site-name-latest`.
+- Actions and warnings are logged to `/var/log/wordpress-permissions.log`.
 
 ---
 
@@ -115,6 +188,8 @@ It **DOES**:
 - Validate WordPress structure before changes
 - Refuse unsafe or ambiguous targets
 - Support `--dry-run` to preview changes
+- Create permission backups by default (stored in `/tmp/wp-perms-backup`)
+- Provide restoration via `--restore=/tmp/wp-perms-backup/site-name-latest`
 - Operate idempotently (safe to run repeatedly)
 
 ---
@@ -132,12 +207,50 @@ It **DOES**:
 
 The script automatically disables animations when run from cron or other non-TTY environments.
 
-### Example cron job
+### Example cron jobs
+
+#### Daily at 3 AM
 ```cron
-0 3 * * * root /usr/local/bin/wp-hardening.sh --all-sites
+0 3 * * * root /usr/local/bin/wp-hardening.sh --all-sites --no-backup
+```
+
+#### Weekly with backups (Sunday at 2 AM)
+```cron
+0 2 * * 0 root /usr/local/bin/wp-hardening.sh --all-sites
+```
+
+#### With custom log location
+```cron
+0 4 * * * root /usr/local/bin/wp-hardening.sh --all-sites >> /var/log/wp-hardening-cron.log 2>&1
 ```
 
 Cron output will be clean and readable.
+
+---
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**"Permission denied" errors:**
+
+- Ensure script is run as root/sudo
+- Check SELinux/AppArmor permissions
+
+**"No WordPress sites found":**
+
+- Use `--base-path` to add custom locations
+- Verify `wp-config.php` exists in target directories
+
+**"Refusing unsafe directory":**
+
+- Script prevents execution on system directories
+- Use full path to specific WordPress install
+
+**Backup failures:**
+
+- Check `/tmp` directory permissions
+- Ensure `getfacl` is installed for ACL backups
 
 ---
 
@@ -164,24 +277,41 @@ It is a **baseline hardening tool**, not a full security suite.
 
 ## 📜 License
 
-MIT License — see [LICENSE](LICENSE)
+MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
 ## 🤝 Contributing
 
-Issues and pull requests are welcome.
+Contributions welcome! Please:
+
+- Fork the repository
+- Create a feature branch
+- Submit a pull request
 
 Guidelines:
-- Keep changes security-focused
-- Avoid destructive defaults
-- Maintain clear operator feedback
+
+- Maintain backward compatibility
+- Add tests for new features
+- Update documentation
+- Follow existing code style
 
 ---
 
 ## 👤 Author
 
-Created by **Lee Hayward**
+**Lee Hayward**
 
-This project exists to make WordPress servers safer by default.
-Audit it. Fork it. Improve it.
+Making WordPress servers safer by default.
+
+---
+
+## ⭐ Support
+
+If this tool helps you, please:
+
+- Star the repository
+- Share with other WordPress administrators
+- Report issues and suggest improvements
+
+Remember: Security is a process, not a product. Regular updates, monitoring, and defense-in-depth are essential for true security.
